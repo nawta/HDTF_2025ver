@@ -52,7 +52,13 @@ def construct_download_queue(source_dir: os.PathLike, output_dir: os.PathLike) -
     download_queue = []
 
     for subset in subsets:
-        video_urls = read_file_as_space_separated_data(os.path.join(source_dir, f'{subset}_video_url.txt'))
+        # Check if subset files exist
+        url_file = os.path.join(source_dir, f'{subset}_video_url.txt')
+        if not os.path.exists(url_file):
+            print(f"Skipping {subset} subset - files not found")
+            continue
+            
+        video_urls = read_file_as_space_separated_data(url_file)
         crops = read_file_as_space_separated_data(os.path.join(source_dir, f'{subset}_crop_wh.txt'))
         intervals = read_file_as_space_separated_data(os.path.join(source_dir, f'{subset}_annotion_time.txt'))
         resolutions = read_file_as_space_separated_data(os.path.join(source_dir, f'{subset}_resolution.txt'))
@@ -121,8 +127,8 @@ def download_and_process_video(video_data: Dict, output_dir: str):
     # We do not know beforehand, what will be the resolution of the downloaded video
     # Youtube-dl selects a (presumably) highest one
     video_resolution = get_video_resolution(raw_download_path)
-    if not video_resolution != video_data['resolution']:
-        print(f"Downloaded resolution is not correct for {video_data['name']}: {video_resolution} vs {video_data['name']}. Discarding this video.")
+    if video_resolution != int(video_data['resolution']):
+        print(f"Downloaded resolution is not correct for {video_data['name']}: {video_resolution} vs {video_data['resolution']}. Discarding this video.")
         return
 
     for clip_idx in range(len(video_data['intervals'])):
@@ -150,14 +156,13 @@ def read_file_as_space_separated_data(filepath: os.PathLike) -> Dict:
 
 def download_video(video_id, download_path, resolution: int=None, video_format="mp4", log_file=None):
     """
-    Download video from YouTube.
+    Download video from YouTube using yt-dlp.
     :param video_id:        YouTube ID of the video.
     :param download_path:   Where to save the video.
+    :param resolution:      Specific resolution to download.
     :param video_format:    Format to download.
-    :param log_file:        Path to a log file for youtube-dl.
-    :return:                Tuple: path to the downloaded video and a bool indicating success.
-
-    Copy-pasted from https://github.com/ytdl-org/youtube-dl
+    :param log_file:        Path to a log file for yt-dlp.
+    :return:                Bool indicating success.
     """
     # if os.path.isfile(download_path): return True # File already exists
 
@@ -165,15 +170,27 @@ def download_video(video_id, download_path, resolution: int=None, video_format="
         stderr = subprocess.DEVNULL
     else:
         stderr = open(log_file, "a")
-    video_selection = f"bestvideo[ext={video_format}]"
-    video_selection = video_selection if resolution is None else f"{video_selection}[height={resolution}]"
+    
+    # yt-dlp format selection is more flexible
+    if resolution is None:
+        format_selection = f"bestvideo[ext={video_format}]+bestaudio[ext=m4a]/best[ext={video_format}]"
+    else:
+        format_selection = f"bestvideo[height={resolution}][ext={video_format}]+bestaudio[ext=m4a]/best[height={resolution}][ext={video_format}]"
+    
     command = [
-        "youtube-dl",
-        "https://youtube.com/watch?v={}".format(video_id), "--quiet", "-f",
-        video_selection,
-        "--output", download_path,
-        "--no-continue"
+        "yt-dlp",
+        f"https://youtube.com/watch?v={video_id}",
+        "--quiet",
+        "-f", format_selection,
+        "-o", download_path,
+        "--no-continue",
+        "--no-check-certificate",  # Helps with SSL issues
+        "--retries", "3",  # Retry failed downloads
+        "--fragment-retries", "3",  # Retry failed fragments
+        "--no-part",  # Don't use .part files
+        "--merge-output-format", video_format  # Ensure output format
     ]
+    
     return_code = subprocess.call(command, stderr=stderr)
     success = return_code == 0
 

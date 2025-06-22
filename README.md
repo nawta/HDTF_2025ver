@@ -3,11 +3,23 @@
 Flow-guided One-shot Talking Face Generation with a High-resolution Audio-visual Dataset
 <a href="https://openaccess.thecvf.com/content/CVPR2021/papers/Zhang_Flow-Guided_One-Shot_Talking_Face_Generation_With_a_High-Resolution_Audio-Visual_Dataset_CVPR_2021_paper.pdf" target="_blank">paper</a>    <a href="https://github.com/MRzzm/HDTF/blob/main/Supplementary%20Materials.pdf" target="_blank">supplementary</a>
 
+## Overview
+
+The HDTF (High-resolution Talking Face) dataset provides high-quality talking face videos for research in audio-visual speech processing, lip synchronization, and talking face generation. This repository contains an improved version of the dataset downloader that automates the process of downloading, cutting, and cropping videos from YouTube.
+
+## Dataset Structure
+
+The HDTF dataset is organized into three subsets:
+- **RD (Radio)**: Radio/podcast style videos
+- **WDA**: Videos featuring various speakers (including political figures)
+- **WRA**: Additional speaker videos
+
 ## Details of HDTF dataset
 **./HDTF_dataset** consists of *youtube video url*, *video resolution* (in our method, may not be the best resolution), *time stamps of talking face*, *facial region* (in the our method) and *the zoom scale* of the cropped window.
+
+### Metadata Files
+
 **xx_video_url.txt:**
-
-
 ```
 format:     video name | video youtube url
 ```
@@ -46,13 +58,140 @@ When using HDTF dataset,
 
 The HDTF dataset is available to download under a <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank"> Creative Commons Attribution 4.0 International License</a>. If you face any problems when processing HDTF, pls contact me.
 
+## Installation
+
+```bash
+# Install required dependencies
+pip install tqdm yt-dlp
+
+# Ensure ffmpeg is installed
+# Ubuntu/Debian:
+sudo apt-get install ffmpeg
+# macOS:
+brew install ffmpeg
+```
+
 ## Downloading
-For convenience, we added the `download.py` script which downloads, crops and resizes the dataset. You can use it via the following command:
+For convenience, we provide the `download.py` script which downloads, crops and resizes the dataset. You can use it via the following command:
 ```
 python download.py --output_dir /path/to/output/dir --num_workers 8
 ```
 
+### Command Line Arguments
+- `--source_dir` or `-s`: Path to metadata directory (default: `HDTF_dataset`)
+- `--output_dir` or `-o`: Where to save processed videos (required)
+- `--num_workers` or `-w`: Number of parallel download workers (default: 8)
+
 Note: some videos might become unavailable if the authors will remove them or make them private.
+
+## Output Structure
+
+After running `download.py`, the output directory will contain:
+
+```
+output_dir/
+├── _videos_raw/                              # Temporary directory (can be deleted after processing)
+│   ├── {subset}_{videoname}.mp4             # Raw downloaded videos
+│   └── {subset}_{videoname}_download_log.txt # Download logs
+├── {subset}_{videoname}_000.mp4             # Processed clip 1
+├── {subset}_{videoname}_001.mp4             # Processed clip 2
+└── ...                                       # More clips
+```
+
+### Output Characteristics
+- **Video only**: No audio track included
+- **Square format**: All clips are square (width = height)
+- **High resolution**: Maintains original resolution (720p or 1080p)
+- **Face-centered**: Cropped to center on the speaker's face
+- **Systematic naming**: `{subset}_{videoname}_{clipindex:03d}.mp4`
+
+## Processing Pipeline
+
+The `download.py` script performs the following steps:
+
+1. **Download**: Fetches videos from YouTube at specified resolution using yt-dlp
+2. **Cut**: Extracts time intervals containing talking faces based on annotation files
+3. **Crop**: Applies facial region cropping to create square clips using FFmpeg
+4. **Save**: Outputs individual clips with systematic naming
+
+## Improvements Over Original Code
+
+### 1. **Migration to yt-dlp**
+- **Original**: Used deprecated `youtube-dl` library
+- **Improved**: Updated to actively maintained `yt-dlp` with better reliability
+- **Benefits**: 
+  - Better handling of YouTube API changes
+  - Improved download success rates
+  - More robust error handling
+
+### 2. **Enhanced Download Robustness**
+Added several flags to improve download reliability:
+```python
+"--retries", "3",              # Retry failed downloads
+"--fragment-retries", "3",     # Retry failed fragments
+"--no-part",                   # Avoid partial file issues
+"--no-check-certificate",      # Handle SSL certificate issues
+"--merge-output-format", mp4   # Ensure consistent output format
+```
+
+### 3. **Improved Format Selection**
+- **Original**: Basic format string that could fail
+- **Improved**: Sophisticated format selection with fallbacks
+```python
+# Example for 720p:
+"bestvideo[height=720][ext=mp4]+bestaudio[ext=m4a]/best[height=720][ext=mp4]"
+```
+
+### 4. **Better Error Handling**
+- Added graceful handling of missing metadata files
+- Skip subsets if files are not found instead of crashing
+- More informative error messages for debugging
+- Individual download logs for each video
+
+### 5. **Code Quality Improvements**
+- Added comprehensive documentation and docstrings
+- Better variable naming for clarity
+- Type hints in function signatures
+- Improved code organization and readability
+
+### 6. **Robustness Features**
+- File existence checks before processing
+- Validation of downloaded video resolution
+- Proper handling of videos with multiple clips
+- Clear progress indication with tqdm
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Download Failures**
+   - Check internet connection
+   - Verify YouTube URLs are still valid
+   - Review individual download logs in `_videos_raw/`
+   - Some videos may have been removed or made private
+
+2. **Resolution Mismatches**
+   - The requested resolution may not be available
+   - Script will skip videos if downloaded resolution doesn't match metadata
+   - Consider updating metadata files if needed
+
+3. **Missing Videos**
+   - Videos without proper cropping information are skipped
+   - Check console output for specific reasons
+   - Some videos may be discarded due to quality issues
+
+### Manual Recovery
+
+For failed downloads:
+1. Check the download log: `_videos_raw/{video_name}_download_log.txt`
+2. Try downloading manually with yt-dlp
+3. Update metadata files if video formats have changed
+
+## Storage Notes
+
+- The `_videos_raw/` directory contains full-length downloaded videos
+- This directory can be safely deleted after processing to save space
+- Final processed clips are much smaller than raw videos
 
 ## Reference
 if you use HDTF, pls reference
